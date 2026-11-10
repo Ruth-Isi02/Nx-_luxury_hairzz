@@ -258,6 +258,15 @@ footer .logo{color:#fff}
   .sticker{font-size:11px;padding:9px 13px}.s1{left:-6px}.s2{right:-6px}
   .arch{box-shadow:10px 10px 0 var(--gold),0 30px 50px -24px rgba(138,106,31,.7)}
 }
+/* checkout form inside the cart */
+.drawer{overflow-y:auto}
+.lines{flex:0 0 auto;overflow:visible;min-height:60px}
+.co{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.co input{padding:12px 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:16px;min-width:0;width:100%}
+.co input:focus{outline:2px solid var(--gold);border-color:transparent}
+.co .full{grid-column:1/-1}
+.secure{font-size:12px;color:var(--mute);text-align:center;margin-top:10px}
+#checkout{width:100%}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
@@ -366,14 +375,28 @@ footer .logo{color:#fff}
   <p class="lab">Pay in</p>
   <div class="cur" role="group" aria-label="Pay in"><button data-cur="NGN" aria-pressed="true">₦ Naira</button><button data-cur="USD" aria-pressed="false">$ Dollars</button><button data-cur="GHS" aria-pressed="false">GH₵ Cedis</button></div>
   <div class="lines" id="lines"></div>
-  <div class="total"><span>Subtotal</span><span id="sub">₦0</span></div>
-  <p class="rate" id="rate"></p>
-  <button class="btn btn-dark" id="checkout">Checkout</button>
+  <form id="coForm">
+    <div class="co">
+      <input class="full" id="coName" type="text" placeholder="Full name" autocomplete="name" required>
+      <input id="coEmail" type="email" placeholder="Email" autocomplete="email" required>
+      <input id="coPhone" type="tel" placeholder="Phone (WhatsApp)" autocomplete="tel" required>
+      <input class="full" id="coAddr" type="text" placeholder="Delivery address" autocomplete="street-address" required>
+      <input id="coCity" type="text" placeholder="City" autocomplete="address-level2" required>
+      <input id="coCountry" type="text" placeholder="Country" autocomplete="country-name" required>
+    </div>
+    <div class="total"><span>Subtotal</span><span id="sub">₦0</span></div>
+    <p class="rate" id="rate"></p>
+    <button class="btn btn-dark" id="checkout" type="submit">Checkout</button>
+    <p class="secure">Secure payment by Paystack</p>
+  </form>
 </aside>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <input type="file" id="picker" accept="image/*,video/*" hidden>
 
+<script src="https://js.paystack.co/v1/inline.js"></script>
 <script>
+/* Paystack public key (safe to publish). Swap for the pk_live_ key when the account goes live. Never put the secret key here. */
+const PAYSTACK_KEY = "pk_test_91e6700b081fe9514c387b8f2f8478bbeff3e6c5";
 /* Permanent media: publish the files next to this page and list them here by relative path. */
 const MEDIA = { logo:null, hero:null, reel1:null, reel2:null, reel3:null };
 /* Exchange rates (mid-market, checked 10 Nov 2026). Update these when rates move. */
@@ -494,7 +517,7 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-cur]");if(
 
 /* cart */
 const drawer=$("#drawer"),scrim=$("#scrim");
-function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove("on"),2600)}
+function toast(m,ms=2600){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove("on"),ms)}
 function openCart(o){drawer.classList.toggle("on",o);scrim.classList.toggle("on",o);drawer.setAttribute("aria-hidden",!o)}
 function renderCart(pulse=true){
   let n=0,sub=0;const html=[];
@@ -517,7 +540,33 @@ document.addEventListener("click",e=>{
 });
 $("#openCart").onclick=()=>openCart(true);$("#closeCart").onclick=()=>openCart(false);scrim.onclick=()=>openCart(false);
 document.addEventListener("keydown",e=>{if(e.key==="Escape")openCart(false)});
-$("#checkout").onclick=()=>toast(cart.size?"Checkout connects to your payment provider when the store goes live":"Add something to your cart first");
+$("#coForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  if(!cart.size){toast("Add something to your cart first");return}
+  if(typeof PaystackPop==="undefined"){toast("Payment opens on the live website. Open the hosted link to pay.",5000);return}
+  const cur=state.cur,f=k=>$("#"+k).value.trim();
+  let total=0;const items=[];
+  cart.forEach((q,id)=>{const p=PRODUCTS.find(x=>x.id===id);total+=q*p.price;items.push(q+" x "+p.name)});
+  const field=(n,v,val)=>({display_name:n,variable_name:v,value:val});
+  PaystackPop.setup({
+    key:PAYSTACK_KEY,
+    email:f("coEmail"),
+    amount:Math.round(total*RATES[cur]*100),
+    currency:cur,
+    ref:"NX-"+Date.now(),
+    metadata:{custom_fields:[
+      field("Name","name",f("coName")),field("Phone","phone",f("coPhone")),
+      field("Address","address",f("coAddr")),field("City","city",f("coCity")),
+      field("Country","country",f("coCountry")),field("Items","items",items.join("; ")),
+      field("Naira total","naira_total",String(total))
+    ]},
+    callback:function(r){
+      cart.clear();renderCart(false);$("#coForm").reset();openCart(false);
+      toast("Payment received. Reference "+r.reference+". We will message you to confirm delivery.",7000);
+    },
+    onClose:function(){toast("Payment window closed. Your cart is saved.")}
+  }).openIframe();
+});
 $("#news").addEventListener("submit",e=>{e.preventDefault();e.target.reset();toast("You're on the list")});
 
 /* motion */
